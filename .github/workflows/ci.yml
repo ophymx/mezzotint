@@ -86,10 +86,8 @@ jobs:
     # QEMU and checks the packing against the format that kernel chose.
     #
     # It is a gate, not a report: `fbdev-vm.sh` captures the guest's
-    # console, greps for the self-test's exit line, and fails when it is
-    # missing or non-zero. The palette mode is the case where a refusal is
-    # the pass — the backend must decline an 8bpp pseudocolour framebuffer
-    # rather than packing three channels on top of each other.
+    # console, greps for the exit lines, and fails when they are missing
+    # as well as when they are non-zero.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -109,7 +107,26 @@ jobs:
           sudo chmod +r "$KERNEL"
           echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
       # 800x600 RGB565, then 24bpp — three-byte pixels are the awkward
-      # case for byte order — then the palette mode that must be refused.
+      # case for byte order.
       - run: ./scripts/fbdev-vm.sh 0x314
       - run: ./scripts/fbdev-vm.sh 0x315
-      - run: ./scripts/fbdev-vm.sh 0x303
+      # The 8bpp palette visual the backend must refuse is deliberately
+      # *not* here, and the reason is worth keeping. This runner's kernel
+      # binds `simpledrm`, which will not drive a palette mode at all, so
+      # `vga=0x303` produces no /dev/fb0 — and a run of that mode was
+      # passing here for exactly that reason, having never reached the
+      # rejection it claimed to be testing. `fbdev-vm.sh` now refuses to
+      # call an absent device a refusal, which turns that vacuous pass
+      # into a failure, so the mode belongs where it can actually run: a
+      # host with a `CONFIG_FB_VESA` kernel. See CONTRIBUTING.md.
+      #
+      # What stands in for it is a negative control, which does not need a
+      # palette device: demand a refusal from a mode that must be
+      # accepted, and the harness has to notice. If the refusal branch
+      # ever stops being able to fail, this is what says so.
+      - name: The refusal check can still fail
+        run: |
+          if MUST_REFUSE=yes ./scripts/fbdev-vm.sh 0x314; then
+            echo "a truecolor framebuffer was accepted where a refusal was demanded" >&2
+            exit 1
+          fi

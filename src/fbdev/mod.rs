@@ -49,8 +49,10 @@
 //! `vga=` to pick a mode.
 //!
 //! `scripts/fbdev-vm.sh [vga-mode]` does the whole thing: builds the
-//! examples, assembles the initramfs, boots, checks the self-test's exit
-//! status, powers off, and fails the shell if anything went wrong.
+//! examples, assembles the initramfs, boots, checks what the guest
+//! reported, powers off, and fails the shell if anything went wrong —
+//! including when the kernel produced no framebuffer at all, which is a
+//! mode that tested nothing rather than a mode that passed.
 //!
 //! ```text
 //! scripts/fbdev-vm.sh 0x314
@@ -59,8 +61,11 @@
 //! `vga=0x314` is 800x600 RGB565, `0x317` is 1024x768 RGB565, `0x315`
 //! lands on 24bpp — worth running, since three-byte pixels are the awkward
 //! case for byte order — and `0x303` is an 8bpp palette, which this
-//! backend refuses. Nothing in it needs root, and it never touches the
-//! host's own framebuffer.
+//! backend refuses. That last one needs a host kernel with
+//! `CONFIG_FB_VESA`: a kernel that binds `simpledrm` instead will not
+//! drive a palette mode at all, so there is no device to refuse and the
+//! harness says so rather than counting it as a refusal. Nothing in it
+//! needs root, and it never touches the host's own framebuffer.
 //!
 //! That is how the palette rejection and the RGB565 packing were checked
 //! against a kernel rather than against an assumption.

@@ -118,20 +118,43 @@ a waveform the difference is only visible on glass.
 **A framebuffer's pixel format comes from hardware, so a unit test can only
 assert constants somebody typed.** QEMU supplies real ones: a host kernel,
 an initramfs, and `vga=` to pick a mode. `scripts/fbdev-vm.sh [vga-mode]`
-is that harness, and CI runs it at three modes — RGB565, 24bpp, and the
-8bpp palette visual the backend must *refuse*. That is how the palette
-rejection and the packing get checked against a kernel instead of against
-an assumption.
+is that harness. That is how the packing and the palette rejection get
+checked against a kernel instead of against an assumption.
 
 A harness like that is only a gate if it can fail, and the shape it wants
 to have is the shape that cannot. A script that ends by `exec`-ing qemu
 reports qemu's exit status, and a self-test result printed to the serial
 console is something a human reads and CI does not — so wiring one up
 unchanged produces a step that passes unconditionally. The script
-therefore captures the console, greps it for the self-test's exit line,
-fails when that line is missing as well as when it is non-zero, and puts a
-timeout around the boot so a hung guest fails rather than hangs. Keep all
-four of those if you touch it.
+therefore captures the console, greps it for the exit lines, fails when
+they are missing as well as when they are non-zero, and puts a timeout
+around the boot so a hung guest fails rather than hangs. Keep all four of
+those if you touch it.
+
+**And a pass has to be a pass for the right reason.** The mode that must
+be *refused* — an 8bpp palette visual, whose pixels are indices rather
+than colours — was the second place this went wrong, and more quietly than
+the first. Any non-zero exit from `probe` was being read as "the backend
+declined it", which is true on a kernel that gives you such a framebuffer
+and false on one that does not: a kernel binding `simpledrm` rather than
+`vesafb` will not drive a palette mode at all, so there is no `/dev/fb0`,
+`probe` fails because the device is missing, and the rejection under test
+never runs. It passed in CI that way.
+
+Two things fix it and both are worth keeping. The guest reports whether
+`/dev/fb0` existed, and an absent device is a failure rather than a skip —
+a mode this kernel cannot produce tests nothing, and saying so out loud is
+the whole difference between a gate and a green tick. And `probe` exits
+**3** specifically for "this backend declines these pixels", so the script
+asserts on that code rather than on "non-zero", which cannot be confused
+with any other way of failing.
+
+CI therefore runs RGB565 and 24bpp, which its kernel does produce, and
+*not* the palette mode, which it cannot — run that one locally, on a host
+with a `CONFIG_FB_VESA` kernel. What stands in for it there is a negative
+control that needs no palette device: `MUST_REFUSE=yes` on a mode that
+must be accepted, which the harness has to fail. If the refusal branch
+ever stops being able to fail, that is what says so.
 
 ## Backends
 
