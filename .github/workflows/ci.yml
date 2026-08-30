@@ -14,7 +14,7 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -58,7 +58,11 @@ jobs:
   msrv:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      # `dtolnay/rust-toolchain` is pinned by *toolchain*, not by action
+      # version — the ref chooses the Rust, which is why the others carry
+      # `@vN` and these carry `@stable` and `@master`.
+      #
       # This number and `rust-version` in Cargo.toml are two copies of one
       # fact and move together. It was measured against real 1.87 and 1.88
       # toolchains, not guessed — see the comment beside the manifest
@@ -72,7 +76,7 @@ jobs:
   licenses:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Most of the good documentation of e-ink refresh behaviour is GPL,
       # and this crate is MIT/Apache. The realistic way those terms arrive
       # is a transitive dependency nobody read. Policy in deny.toml.
@@ -90,7 +94,7 @@ jobs:
     # as well as when they are non-zero.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - name: Install QEMU and a guest userland
         run: |
