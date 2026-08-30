@@ -1,0 +1,84 @@
+[package]
+name = "mezzotint"
+version = "0.1.0"
+edition = "2021"
+# 1.88 is where `slice::as_chunks` stabilized. Measured against real 1.87 and
+# 1.88 toolchains rather than assumed, and the measurement is more specific
+# than the number: the library alone compiles on 1.87, and it is the packing
+# and encoder *tests* that need 1.88, because clippy's
+# `chunks_exact_to_as_chunks` rewrites them to it and warnings are fatal in
+# CI. Declaring 1.87 would therefore mean declaring a version on which this
+# crate's own gate cannot run, which is worse than declaring one version more
+# than a consumer strictly needs. Re-measure before lowering it.
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+description = "E-ink and framebuffer display output: waveform-aware refresh over a vendor-neutral panel contract"
+keywords = ["eink", "framebuffer", "epd", "fbdev", "embedded"]
+categories = ["hardware-support", "graphics", "no-std"]
+readme = "README.md"
+repository = "https://github.com/ophymx/mezzotint"
+authors = ["Jeffrey T. Peckham <abic@ophymx.com>"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { version = "0.2", optional = true }
+
+[features]
+# `std` is on by default because the overwhelmingly common consumer is a
+# Linux device shell. An embedded consumer turns it off; nothing in the
+# vocabulary needs it.
+default = ["std", "fbdev"]
+
+# Heap. The driver keeps a set of in-flight updates and the recording panel
+# keeps a log, so both need one; the contract types, `PanelRect`,
+# `RefreshPolicy` and the encoder do not and are reachable without it.
+alloc = []
+
+# `std::error::Error` for the error type, `std::io::Error` inside it, and
+# the ability to open a device at all.
+std = ["alloc"]
+
+# The generic Linux framebuffer backend: /dev/fb0 with no display
+# controller behind it. Runs anywhere fbdev does — a VM, a Pi — which no
+# e-ink backend can.
+#
+# `libc` below is Linux-only, so the module is gated on the target as well
+# as on this feature and disappears elsewhere. That keeps `fbdev` safe to
+# leave in `default`: a macOS or Windows consumer gets a crate that builds
+# with no backend rather than one that does not build.
+fbdev = ["std", "dep:libc"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+# `docsrs` is set by docs.rs through the rustdoc-args above and by nothing
+# else, so cargo has to be told it is a real name or every local build warns
+# about it — and warnings are fatal in CI.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(docsrs)'] }
+
+# The examples are the on-device half of the test story: a person runs
+# them while holding the hardware. They are all fbdev, so they do not
+# build without it — and without this, `cargo test --no-default-features`
+# tries to and fails.
+[[example]]
+name = "probe"
+required-features = ["fbdev"]
+
+[[example]]
+name = "selftest"
+required-features = ["fbdev"]
+
+[[example]]
+name = "pattern"
+required-features = ["fbdev"]
+
+# Not a gate — a build machine's timings are not a device's — but
+# `encode`'s documentation quotes a number, and a quoted number should
+# have something behind it that can be re-run. `harness = false` because
+# this prints measurements rather than running `#[bench]`, which is still
+# unstable.
+[[bench]]
+name = "quantize"
+harness = false
+required-features = ["alloc"]

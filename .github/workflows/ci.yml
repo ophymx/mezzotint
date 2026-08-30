@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # The gate is only meaningful with warnings fatal: a clippy lint that
+  # merely prints is a lint nobody fixes.
+  RUSTFLAGS: -D warnings
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets --all-features
+      - run: cargo test --all-features
+      # The vocabulary is core-only and the driver needs nothing but
+      # `alloc`, which is the single largest lever on this crate being
+      # usable outside the consumer it was built for. That claim is worth
+      # exactly as much as the build that checks it, so every rung of the
+      # feature ladder gets compiled and linted, not just the top one.
+      - run: cargo clippy --all-targets --no-default-features
+      - run: cargo clippy --all-targets --no-default-features --features alloc
+      - run: cargo clippy --all-targets --no-default-features --features std
+      - run: cargo test --no-default-features
+      - run: cargo test --no-default-features --features alloc
+      # The backends are Linux-only and the devices are ARM, so a
+      # host-only build proves less than it looks. Both widths matter: the
+      # kernel's screeninfo structs embed `unsigned long`, so the layout
+      # assertions in the fbdev backend differ between a 32-bit and a
+      # 64-bit target, and every e-ink device is one or the other.
+      - run: rustup target add armv7-unknown-linux-gnueabihf aarch64-unknown-linux-gnu
+      - run: cargo check --all-features --target armv7-unknown-linux-gnueabihf
+      - run: cargo check --all-features --target aarch64-unknown-linux-gnu
+      # Every target above is Linux, which is exactly how the crate came
+      # to be uncompilable anywhere else: `fbdev` is on by default, `libc`
+      # is a Linux-only dependency, and nothing gated the module on the
+      # target — so a `cargo add mezzotint` on macOS or Windows failed on
+      # the first build and no gate here could see it.
+      - run: rustup target add x86_64-pc-windows-gnu aarch64-apple-darwin
+      - run: cargo check --all-features --target x86_64-pc-windows-gnu
+      - run: cargo check --all-features --target aarch64-apple-darwin
+      # And the `no_std` claim is worth what the build that proves it is
+      # worth. A bare-metal Cortex-M target has no `std` to fall back on,
+      # so this is the rung that would actually catch a stray `std::` in
+      # the vocabulary — which is the audience the split was done for.
+      - run: rustup target add thumbv7em-none-eabihf
+      - run: cargo check --no-default-features --target thumbv7em-none-eabihf
+      - run: cargo check --no-default-features --features alloc --target thumbv7em-none-eabihf
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # This number and `rust-version` in Cargo.toml are two copies of one
+      # fact and move together. It was measured against real 1.87 and 1.88
+      # toolchains, not guessed — see the comment beside the manifest
+      # entry, which also records which half of the crate actually needs it.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88"
+      - run: cargo check --all-features
+      - run: cargo test --all-features
+
+  licenses:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Most of the good documentation of e-ink refresh behaviour is GPL,
+      # and this crate is MIT/Apache. The realistic way those terms arrive
+      # is a transitive dependency nobody read. Policy in deny.toml.
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses
+
+  framebuffer:
+    # A framebuffer's pixel format comes from hardware, so a unit test can
+    # only assert constants somebody typed. This boots a real kernel under
+    # QEMU and checks the packing against the format that kernel chose.
+    #
+    # It is a gate, not a report: `fbdev-vm.sh` captures the guest's
+    # console, greps for the self-test's exit line, and fails when it is
+    # missing or non-zero. The palette mode is the case where a refusal is
+    # the pass — the backend must decline an 8bpp pseudocolour framebuffer
+    # rather than packing three channels on top of each other.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install QEMU and a guest userland
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 busybox-static cpio
+      # The runner image ships a kernel but does not always leave it
+      # world-readable. Failing loudly here is the point: a harness that
+      # quietly skips is the same as one that cannot fail.
+      - name: Find a bootable kernel
+        run: |
+          KERNEL=$(ls -1 /boot/vmlinuz-* 2>/dev/null | tail -n 1)
+          [ -n "$KERNEL" ] || { echo "no kernel in /boot" >&2; exit 1; }
+          sudo chmod +r "$KERNEL"
+          echo "KERNEL=$KERNEL" >> "$GITHUB_ENV"
+      # 800x600 RGB565, then 24bpp — three-byte pixels are the awkward
+      # case for byte order — then the palette mode that must be refused.
+      - run: ./scripts/fbdev-vm.sh 0x314
+      - run: ./scripts/fbdev-vm.sh 0x315
+      - run: ./scripts/fbdev-vm.sh 0x303

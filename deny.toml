@@ -1,0 +1,57 @@
+# cargo-deny license policy. Run by CI as `cargo deny check licenses`.
+#
+# The graph today is `libc`, so this gate discovers nothing. That is the
+# point. This crate's whole subject area — how e-ink panels are refreshed —
+# is documented mostly in GPL and AGPL projects (FBInk, KOReader, kobo-rs),
+# and the plausible way for those terms to reach a MIT/Apache crate is not
+# somebody pasting code, it is a dependency arriving three levels down with
+# a license nobody looked at. If that happens the build fails and somebody
+# has to decide, rather than finding out at release time.
+#
+# See CONTRIBUTING.md for the other half of the discipline, the one a linter
+# cannot enforce: which sources may be read for facts, which may be adapted
+# with attribution, and why the kernel UAPI is the clean base for ioctl
+# structs.
+#
+# Targets are deliberately unset, so every platform's dependencies are
+# checked — including ones a Linux build never sees.
+
+[licenses]
+# The allow list is deliberately wider than the graph: it pre-authorizes the
+# permissive set so a routine dependency addition does not need a policy
+# change, while anything copyleft still stops the build. Unmatched entries
+# are the expected state, not a finding.
+unused-allowed-license = "allow"
+
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "MIT",
+    "Unlicense",
+    "Zlib",
+]
+
+# Deliberately absent, and the absence is the entire mechanism:
+#
+#   GPL-*, AGPL-*, LGPL-*   The prior art for this crate is largely under
+#                           these. Nothing in the graph may be, and a crate
+#                           that offers "Apache-2.0 OR GPL-2.0-only" must
+#                           resolve to the Apache option — leaving GPL off
+#                           this list is what forces that.
+#   MPL-2.0                 File-level copyleft. Permitted in principle for
+#                           a leaf crate, but it carries a source-availability
+#                           obligation onto anyone shipping a binary of this,
+#                           and this crate is meant to be cheap to embed.
+#                           Add it only with a NOTICE explaining the terms.
+#
+# There is no NOTICE file, also deliberately: with `libc` as the only
+# dependency there is nothing a distributed binary carries that this crate's
+# own dual license does not already cover. Write one when this list starts
+# doing real work.
+
+# A crate whose license text does not match its SPDX declaration closely
+# enough gets flagged rather than guessed at.
+confidence-threshold = 0.8
