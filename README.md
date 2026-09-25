@@ -72,12 +72,15 @@ conformance suite, and they run on a build machine with no panel. The
 simulated panel is the one that keeps time — pixels reach its glass when
 an update completes, not when it is submitted — so it can say from its
 own side whether anything wrote under a live update, which is the
-assertion the driver exists to satisfy. `viewer/` puts that panel in a
-desktop window with wall time as its clock, so a shell can be watched as
-well as asserted about: page turns land after their latency, a drag's
-monochrome strips and the repaint on release are visible, the regions
-the controller is busy with are outlined, and the fault count sits in
-the title bar. The one thing a unit test cannot
+assertion the driver exists to satisfy. `viewer/` is a small library
+that puts that panel in a desktop window with wall time as its clock and
+calls your shell once per frame, so a shell can be watched as well as
+asserted about: page turns land after their latency, a drag's monochrome
+strips and the repaint on release are visible, the regions the
+controller is busy with are outlined, and the fault count sits in the
+title bar. `cargo run --release --manifest-path viewer/Cargo.toml
+--example demo` shows it driving a stand-in shell. The one thing a unit
+test cannot
 reach — what pixel format a real kernel hands you — is checked by booting
 one under QEMU, at RGB565, at 24bpp, and at the palette visual the fbdev
 backend must refuse.

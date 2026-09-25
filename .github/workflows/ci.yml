@@ -147,5 +147,6 @@ jobs:
         with:
           components: clippy, rustfmt
       - run: cargo fmt --manifest-path viewer/Cargo.toml --check
-      - run: cargo clippy --manifest-path viewer/Cargo.toml -- -D warnings
-      - run: cargo build --manifest-path viewer/Cargo.toml
+      - run: cargo clippy --manifest-path viewer/Cargo.toml --all-targets -- -D warnings
+      - run: cargo build --manifest-path viewer/Cargo.toml --all-targets
+      - run: cargo test --manifest-path viewer/Cargo.toml
