@@ -82,6 +82,7 @@
 //! | `alloc` | [`PanelDriver`] and [`RecordingPanel`] |
 //! | `std` (default) | `std::io::Error` inside [`Error`], and backends |
 //! | `fbdev` (default) | the Linux framebuffer backend, on Linux |
+//! | `mxcfb` | the i.MX EPDC ioctl vocabulary, [`mxcfb::uapi`] — not yet a backend |
 //!
 //! The vocabulary — [`UpdateClass`], [`Update`], [`PanelRect`],
 //! [`PanelInfo`], [`Panel`], [`RefreshPolicy`], [`encode`] — needs neither.
@@ -122,6 +123,14 @@ mod recording;
 #[cfg(all(feature = "fbdev", target_os = "linux"))]
 #[cfg_attr(docsrs, doc(cfg(all(feature = "fbdev", target_os = "linux"))))]
 pub mod fbdev;
+
+// Not a backend, and not gated on the target: it is structs, constants
+// and the arithmetic that turns them into ioctl numbers, which compiles
+// and is worth checking everywhere. The backend that will use it is gated
+// on hardware, not on a feature — see `CONTRIBUTING.md`.
+#[cfg(feature = "mxcfb")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mxcfb")))]
+pub mod mxcfb;
 
 pub use error::{Error, Result};
 pub use panel::{Panel, PanelInfo, PixelFormat, UpdateToken};

@@ -47,6 +47,12 @@ std = ["alloc"]
 # with no backend rather than one that does not build.
 fbdev = ["std", "dep:libc"]
 
+# The i.MX EPDC ioctl vocabulary: `mxcfb.h` transcribed, with its layouts
+# asserted. Pure `core` — no device is opened — so it is not on by
+# default and needs nothing. When the backend lands it hangs off this
+# same feature and will pull in `std` and `libc` then; that is additive.
+mxcfb = []
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

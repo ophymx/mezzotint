@@ -173,7 +173,11 @@ as being right, and for a waveform the difference is only visible on glass.
 
 When one is written, keep three things apart, because that is where the
 per-model variation concentrates: the ioctl surface, the waveform table,
-and the device-identification table. Identification on Kobo is a model
+and the device-identification table. The first exists — `src/mxcfb/`
+transcribes NXP's UAPI header with every offset asserted, and its module
+docs record the struct shapes other vendors ship, including the one that
+shares a size and an ioctl number with NXP's and differs in layout. The
+other two are the hardware-gated part. Identification on Kobo is a model
 code from `/sys` or the device tree, and the mapping belongs in the source
 as *data* rather than as code — `kobo-core` already carries such a table
 for twenty models keyed on `/sys/devices/soc0/machine`, spanning NXP,

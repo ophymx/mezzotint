@@ -106,6 +106,7 @@ the same either way, and neither has to allocate for the other's habits.
 | `alloc` | `PanelDriver` and `RecordingPanel` |
 | `std` (default) | `std::io::Error` inside the error type, and backends |
 | `fbdev` (default) | the Linux framebuffer backend |
+| `mxcfb` | the i.MX EPDC ioctl vocabulary, transcribed and layout-checked; not yet a backend |
 
 The vocabulary — update classes, rects, the `Panel` trait, the refresh
 policy, the encoder — is `core`-only and allocates nothing. Turn
@@ -142,6 +143,9 @@ What is *not* here is the reason the crate exists: an EPDC backend.
 `mxcfb` lands when there is hardware in hand to write it against, as
 0.2's headline. Waveform behaviour is only visible on glass, and a
 version of it written from headers alone would run without being right.
+What headers *can* give — the i.MX ioctl structs and numbers, with every
+offset asserted — is already in, behind the `mxcfb` feature, so the
+backend starts from a checked vocabulary rather than from a header.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the provenance and licensing
 discipline, which is stricter than it looks — most of the good

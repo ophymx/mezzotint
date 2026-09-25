@@ -31,6 +31,7 @@ jobs:
       - run: cargo clippy --all-targets --no-default-features --features std
       - run: cargo test --no-default-features
       - run: cargo test --no-default-features --features alloc
+      - run: cargo test --no-default-features --features mxcfb
       # The backends are Linux-only and the devices are ARM, so a
       # host-only build proves less than it looks. Both widths matter: the
       # kernel's screeninfo structs embed `unsigned long`, so the layout
