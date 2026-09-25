@@ -114,7 +114,8 @@ the same either way, and neither has to allocate for the other's habits.
 | `mxcfb` | the i.MX EPDC ioctl vocabulary, transcribed and layout-checked; not yet a backend |
 
 The vocabulary — update classes, rects, the `Panel` trait, the refresh
-policy, the encoder — is `core`-only and allocates nothing. Turn
+policy, the encoder, the device table — is `core`-only and allocates
+nothing. Turn
 everything off and it builds for a microcontroller, which is the point:
 the audience the `embedded` keyword advertises to cannot use a `std`-only
 crate at all.

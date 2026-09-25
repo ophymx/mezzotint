@@ -87,7 +87,8 @@
 //! | `mxcfb` | the i.MX EPDC ioctl vocabulary, [`mxcfb::uapi`] — not yet a backend |
 //!
 //! The vocabulary — [`UpdateClass`], [`Update`], [`PanelRect`],
-//! [`PanelInfo`], [`Panel`], [`RefreshPolicy`], [`encode`] — needs neither.
+//! [`PanelInfo`], [`Panel`], [`RefreshPolicy`], [`encode`], and the
+//! [`devices`] table — needs neither.
 //! Turn everything off and it builds for a microcontroller.
 //!
 //! `fbdev` is additionally gated on `target_os = "linux"`, so leaving it
@@ -102,6 +103,7 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub mod devices;
 pub mod encode;
 mod error;
 mod panel;

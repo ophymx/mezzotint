@@ -78,8 +78,11 @@ adjacent ground under MIT:
   `quant_bit`, `update_mode` — see *Decisions that are settled* for why
   each is the backend's to derive).
 - [`kobo-core`](https://github.com/Nayeem170/kobo-core) — a Kobo device
-  SDK whose device database identifies twenty models from
-  `/sys/devices/soc0/machine` across NXP, sunxi, and MTK parts.
+  SDK with a table of some twenty models across NXP, sunxi and MTK parts.
+  Looked at for the device table and not used: it keys on the `$PRODUCT`
+  codename alone, which is ambiguous between hardware revisions that
+  differ in ABI, and it carries frontlight, battery and touch details
+  rather than anything about the display interface.
 
 MIT permits adaptation but is not free: the copyright notice and
 permission text have to travel with anything derived from them. So prefer
@@ -191,12 +194,12 @@ and the device-identification table. The first exists — `src/mxcfb/`
 transcribes NXP's UAPI header with every offset asserted, and its module
 docs record the struct shapes other vendors ship, including the one that
 shares a size and an ioctl number with NXP's and differs in layout. The
-other two are the hardware-gated part. Identification on Kobo is a model
-code from `/sys` or the device tree, and the mapping belongs in the source
-as *data* rather than as code — `kobo-core` already carries such a table
-for twenty models keyed on `/sys/devices/soc0/machine`, spanning NXP,
-sunxi and MTK parts, under MIT. See *Provenance and licensing*; that table
-is the highest-value thing to take from any neighbouring project.
+third exists too — `src/devices.rs` maps Kobo's own device ID, codename
+and mainline device-tree string to the SoC and the display interface, as
+data, so adding a model is adding a row. Its IDs and codenames are Kobo's
+(Nickel's version tag and `kobo_config.sh`), consolidated from FBInk and
+KOReader as facts with nothing taken from either. The waveform table is
+what remains, and it is the hardware-gated part.
 
 After i.MX, the same trait covers Allwinner-Kobo (a sunxi shim, a
 different ioctl world), the Kindle mxcfb variants, and MTK. The reMarkable

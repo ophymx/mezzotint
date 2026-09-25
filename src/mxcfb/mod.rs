@@ -34,8 +34,12 @@
 //! way:
 //!
 //! - **64 bytes**: the original layout, with no `dither_mode` or
-//!   `quant_bit`. The Freescale 2.6.35 and 3.0.35 BSPs, which is Kobo
-//!   before Mark 7 and the i.MX50 Kindles.
+//!   `quant_bit`. The stock Freescale 2.6.35 and 3.0.35 BSPs, and the
+//!   i.MX50 Kindles.
+//! - **68 bytes, on 32-bit**: that same layout as NTX shipped it in every
+//!   Kobo before Mark 7, with a kernel pointer as the first field of the
+//!   alt-buffer data. `MXCFB_SEND_UPDATE` is `0x4044462E` there, and the
+//!   wait takes a bare `__u32` marker rather than the marker-data struct.
 //! - **72 bytes**: the layout in [`uapi`]. NXP's own header from the 4.1
 //!   branch onward, unchanged through 6.6; Kobo Mark 7 and later; the
 //!   reMarkable 1.
@@ -51,8 +55,9 @@
 //! of the right size and the wrong *layout* is accepted, and the
 //! controller reads a waveform mode out of the temperature slot. Only the
 //! device table can tell those apart, which is why the ioctl surface, the
-//! waveform table and the device table are three separate things and the
-//! second and third are not here yet.
+//! waveform table and the device table are three separate things. The
+//! table is [`devices`](crate::devices); the waveform table is the part
+//! that waits for hardware.
 //!
 //! [`uapi`] therefore never spells an ioctl number as a literal. Each is
 //! computed from the struct it carries by the kernel's own `_IOW`
