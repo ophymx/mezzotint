@@ -184,9 +184,12 @@ impl Shell {
         }
         // The finger lifted. Only the shell knows that, and this is the
         // call that says so; the driver repaints whatever the drag
-        // degraded, at full fidelity.
+        // degraded, at full fidelity. The dither region goes along
+        // exactly as it does on a present: the repaint can be escalated
+        // to a flash of the whole panel when the ghost debt is due, and a
+        // flash that forgets where the photograph is posterizes it.
         let src = Source::panel(&self.frame, W, H).expect("frame is a full page");
-        if let Err(err) = driver.settle(src, &[]) {
+        if let Err(err) = driver.settle(src, &[PHOTO]) {
             eprintln!("settle: {err}");
         }
     }

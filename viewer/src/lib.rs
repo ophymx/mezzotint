@@ -102,6 +102,38 @@ pub struct Config {
     pub log_faults: bool,
     /// The window title; the viewer appends its counters.
     pub title: String,
+    /// Which windowing system to use, where there is a choice.
+    pub backend: Backend,
+}
+
+/// The windowing system, on platforms that offer more than one.
+///
+/// Only Linux and the BSDs do. The default lets the windowing library
+/// pick, which is Wayland when there is a Wayland compositor. Forcing X11
+/// is for automation: the X test extension can drive a window with
+/// synthetic pointer and key events, and nothing equivalent exists for
+/// Wayland. `MEZZOTINT_VIEWER_BACKEND=x11` in the environment does the
+/// same from outside, so a shell need not know.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Backend {
+    /// Let the windowing library choose.
+    #[default]
+    Auto,
+    /// X11, or XWayland under a Wayland session.
+    X11,
+    /// Wayland.
+    Wayland,
+}
+
+impl Backend {
+    /// `MEZZOTINT_VIEWER_BACKEND`, if set to `x11` or `wayland`.
+    pub fn from_env() -> Self {
+        match std::env::var("MEZZOTINT_VIEWER_BACKEND").as_deref() {
+            Ok("x11") => Backend::X11,
+            Ok("wayland") => Backend::Wayland,
+            _ => Backend::Auto,
+        }
+    }
 }
 
 impl Config {
@@ -124,6 +156,7 @@ impl Default for Config {
             overlays: true,
             log_faults: true,
             title: "mezzotint".to_string(),
+            backend: Backend::from_env(),
         }
     }
 }
@@ -228,7 +261,23 @@ pub type Error = Box<dyn std::error::Error>;
 /// Open the window and run `app` until it asks to exit or the window is
 /// closed.
 pub fn run(config: Config, app: impl App) -> Result<(), Error> {
-    let event_loop = EventLoop::new()?;
+    let mut builder = EventLoop::builder();
+    #[cfg(all(
+        unix,
+        not(any(target_os = "macos", target_os = "android", target_os = "ios"))
+    ))]
+    match config.backend {
+        Backend::Auto => {}
+        Backend::X11 => {
+            use winit::platform::x11::EventLoopBuilderExtX11;
+            builder.with_x11();
+        }
+        Backend::Wayland => {
+            use winit::platform::wayland::EventLoopBuilderExtWayland;
+            builder.with_wayland();
+        }
+    }
+    let event_loop = builder.build()?;
     // Poll: the panel's clock is wall time, so there is always a next
     // frame to draw.
     event_loop.set_control_flow(ControlFlow::Poll);
