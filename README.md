@@ -19,9 +19,10 @@ greyscale tone — which is this crate's whole job.
 - A **driver** that enforces the rules that work on a desk and fail on a
   device: never write under an in-flight update, repaint what a fast
   update degraded, ration the ghost-clearing flash.
-- **Backends**: an in-memory recording panel (CI), the generic Linux
-  framebuffer (fbdev), and — the reason the crate exists — EPDC devices,
-  starting with i.MX/mxcfb e-readers.
+- **Backends**: an in-memory recording panel and a simulated EPDC that
+  keeps updates in flight on a clock the test owns (both for CI), the
+  generic Linux framebuffer (fbdev), and — the reason the crate exists —
+  EPDC devices, starting with i.MX/mxcfb e-readers.
 - The **encode path**: RGBA in; luminance, quantization and error
   diffusion in `mezzotint::encode`, packing inside each backend, per
   update where the hardware allows it.
@@ -66,8 +67,12 @@ and each is easier to get wrong than to notice:
   regions those are, so you name them, per update.
 
 Everything above the ioctls is testable with no hardware attached: the
-recording panel plus the driver tests are the conformance suite, and they
-run on a build machine with no panel. The one thing a unit test cannot
+recording panel, the simulated panel and the driver tests are the
+conformance suite, and they run on a build machine with no panel. The
+simulated panel is the one that keeps time — pixels reach its glass when
+an update completes, not when it is submitted — so it can say from its
+own side whether anything wrote under a live update, which is the
+assertion the driver exists to satisfy. The one thing a unit test cannot
 reach — what pixel format a real kernel hands you — is checked by booting
 one under QEMU, at RGB565, at 24bpp, and at the palette visual the fbdev
 backend must refuse.
@@ -103,7 +108,7 @@ the same either way, and neither has to allocate for the other's habits.
 
 | feature | what it adds |
 |---|---|
-| `alloc` | `PanelDriver` and `RecordingPanel` |
+| `alloc` | `PanelDriver`, `RecordingPanel` and `SimulatedPanel` |
 | `std` (default) | `std::io::Error` inside the error type, and backends |
 | `fbdev` (default) | the Linux framebuffer backend |
 | `mxcfb` | the i.MX EPDC ioctl vocabulary, transcribed and layout-checked; not yet a backend |

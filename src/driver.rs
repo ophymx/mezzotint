@@ -1197,120 +1197,173 @@ mod tests {
         assert!(matches!(err, Error::WaitStalled { .. }), "{err:?}");
     }
 
-    // ---- Reducing per update ----
+    // ---- Against a panel that keeps time ----
+    //
+    // Everything above used doubles that complete at submit. The
+    // simulated panel is the first one that genuinely keeps an update in
+    // flight, and the first that can say from its own side whether the
+    // driver wrote under one.
 
-    /// A panel whose depth belongs to the waveform rather than the
-    /// session. It asks for full colour, keeps what `blit` staged, and
-    /// reduces in `submit` — the first place the class is known.
-    #[derive(Debug)]
-    struct DeferredPanel {
-        info: PanelInfo,
-        staged: Vec<u8>,
-        next_token: u32,
-        /// One entry per update: the class, and how many distinct grey
-        /// levels the panel actually put on the glass for it.
-        reduced: Vec<(UpdateClass, usize)>,
-    }
+    use crate::{SimConfig, SimulatedPanel};
 
-    impl DeferredPanel {
-        fn new(width: u32, height: u32) -> Self {
-            DeferredPanel {
-                // "Do not reduce; I will."
-                info: PanelInfo::new(width, height, PixelFormat::Rgba),
-                staged: vec![0; (width * height * 4) as usize],
-                next_token: 1,
-                reduced: Vec::new(),
-            }
-        }
-
-        /// What this device's waveform for `class` can actually resolve.
-        fn levels_for(class: UpdateClass) -> u32 {
-            match class {
-                UpdateClass::Monochrome => 2,
-                UpdateClass::Fast => 4,
-                UpdateClass::Quality | UpdateClass::Flash => 16,
-            }
+    /// No widening, so a rect on the glass is the rect the test named.
+    fn exact() -> SimConfig {
+        SimConfig {
+            alignment: 1,
+            ..SimConfig::default()
         }
     }
 
-    impl Panel for DeferredPanel {
-        fn info(&self) -> PanelInfo {
-            self.info
-        }
-
-        fn blit(&mut self, src: Source<'_>, rect: PanelRect) -> Result<()> {
-            src.require(rect)?;
-            // Nothing to reduce to yet, so keep the pixels as they came.
-            let w = self.info.width as usize;
-            for y in rect.y..rect.max_y() {
-                let row = src.row(rect.x, y).expect("checked by require");
-                let at = (y as usize * w + rect.x as usize) * 4;
-                let len = rect.w as usize * 4;
-                self.staged[at..at + len].copy_from_slice(&row[..len]);
+    /// A horizontal ramp, so a reduction has something to lose.
+    fn ramp(w: u32, h: u32) -> Vec<u8> {
+        let mut rgba = vec![0u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let at = ((y * w + x) * 4) as usize;
+                let v = (x * 255 / (w - 1).max(1)) as u8;
+                rgba[at..at + 4].copy_from_slice(&[v, v, v, 255]);
             }
-            Ok(())
         }
-
-        fn submit(&mut self, rect: PanelRect, update: Update<'_>) -> Result<UpdateToken> {
-            let levels = DeferredPanel::levels_for(update.class());
-            let w = self.info.width as usize;
-            let step = 255.0 / (levels - 1) as f32;
-            let mut seen = Vec::new();
-            for y in rect.y as usize..rect.max_y() as usize {
-                for x in rect.x as usize..rect.max_x() as usize {
-                    let lum = f32::from(self.staged[(y * w + x) * 4]);
-                    let level = (lum / step).round().clamp(0.0, (levels - 1) as f32) * step;
-                    seen.push(level as u8);
-                }
-            }
-            seen.sort_unstable();
-            seen.dedup();
-            self.reduced.push((update.class(), seen.len()));
-            let token = UpdateToken::new(self.next_token);
-            self.next_token += 1;
-            Ok(token)
-        }
-
-        fn wait(&mut self, _token: UpdateToken, _timeout: Option<Duration>) -> Result<Wait> {
-            Ok(Wait::Complete)
-        }
+        rgba
     }
 
     #[test]
     fn a_panel_may_defer_reduction_until_it_knows_the_class() {
         let (w, h) = (256u32, 4u32);
-        let mut driver = PanelDriver::with_policy(DeferredPanel::new(w, h), RefreshPolicy::never());
-
-        // A full ramp, so a reduction has something to lose.
-        let mut rgba = vec![0u8; (w * h * 4) as usize];
-        for y in 0..h {
-            for x in 0..w {
-                let at = ((y * w + x) * 4) as usize;
-                let v = x as u8;
-                rgba[at..at + 4].copy_from_slice(&[v, v, v, 255]);
-            }
-        }
+        let mut driver = PanelDriver::with_policy(
+            SimulatedPanel::with_config(w, h, exact()),
+            RefreshPolicy::never(),
+        );
+        let rgba = ramp(w, h);
         let source = Source::panel(&rgba, w, h).unwrap();
+        let all = PanelRect::full(w, h);
 
-        let all = Some(PanelRect::full(w, h));
-        driver
-            .present(source, all, UpdateClass::Monochrome)
-            .unwrap();
-        driver.present(source, all, UpdateClass::Fast).unwrap();
-        driver.present(source, all, UpdateClass::Quality).unwrap();
-
-        // The same staged pixels resolved three different depths, each
+        // The same staged pixels resolve three different depths, each
         // matching its waveform. Reducing above the panel could only have
         // picked one, and would have been wrong for the other two.
-        assert_eq!(
-            driver.panel().reduced,
-            vec![
-                (UpdateClass::Monochrome, 2),
-                (UpdateClass::Fast, 4),
-                (UpdateClass::Quality, 16),
-            ]
-        );
+        for (class, levels) in [
+            (UpdateClass::Monochrome, 2),
+            (UpdateClass::Fast, 4),
+            (UpdateClass::Quality, 16),
+        ] {
+            driver.present(source, Some(all), class).unwrap();
+            driver.flush().unwrap();
+            assert_eq!(driver.panel().distinct_levels(all), levels, "{class:?}");
+        }
         // And nothing above the panel quantized at all.
         assert_eq!(driver.info().format, PixelFormat::Rgba);
+    }
+
+    #[test]
+    fn the_driver_never_writes_under_a_live_update() {
+        // Overlapping and unrelated presents back to back, with no
+        // explicit wait anywhere. Only the panel can tell whether the
+        // driver got it right, and this is the assertion the driver
+        // exists to satisfy.
+        let (w, h) = (64u32, 64u32);
+        let mut driver = PanelDriver::with_policy(
+            SimulatedPanel::with_config(w, h, exact()),
+            RefreshPolicy::never(),
+        );
+        let rgba = ramp(w, h);
+        let src = Source::panel(&rgba, w, h).unwrap();
+
+        let first = PanelRect::new(0, 0, 32, 32);
+        let unrelated = PanelRect::new(32, 32, 32, 32);
+        let across = PanelRect::new(16, 16, 32, 32);
+        driver
+            .present(src, Some(first), UpdateClass::Quality)
+            .unwrap();
+        driver
+            .present(src, Some(unrelated), UpdateClass::Monochrome)
+            .unwrap();
+        driver
+            .present(src, Some(across), UpdateClass::Fast)
+            .unwrap();
+        driver.present(src, None, UpdateClass::Quality).unwrap();
+        driver.flush().unwrap();
+
+        let panel = driver.panel();
+        assert!(panel.faults.is_empty(), "{:?}", panel.faults);
+        assert_eq!(panel.updates.len(), 4);
+        // The unrelated one did not pay for the first: submitted at once.
+        assert_eq!(panel.updates[1].submitted_at, Duration::ZERO);
+        // The one across both waited for both before it was staged.
+        let across_at = panel.updates[2].submitted_at;
+        assert!(across_at >= panel.updates[0].completes_at);
+        assert!(across_at >= panel.updates[1].completes_at);
+        assert!(panel.in_flight().is_empty());
+    }
+
+    #[test]
+    fn settling_repaints_only_the_degraded_strip_on_the_glass() {
+        let (w, h) = (256u32, 16u32);
+        let mut driver = PanelDriver::with_policy(
+            SimulatedPanel::with_config(w, h, exact()),
+            RefreshPolicy::never(),
+        );
+        let rgba = ramp(w, h);
+        let src = Source::panel(&rgba, w, h).unwrap();
+        let above = PanelRect::new(0, 0, w, 4);
+        let strip = PanelRect::new(0, 4, w, 4);
+        let below = PanelRect::new(0, 8, w, 8);
+
+        driver.present(src, None, UpdateClass::Quality).unwrap();
+        driver.flush().unwrap();
+        assert_eq!(driver.panel().distinct_levels(strip), 16);
+
+        // A selection dragging across the strip degrades it, and only it.
+        driver
+            .present(src, Some(strip), UpdateClass::Monochrome)
+            .unwrap();
+        driver.flush().unwrap();
+        assert_eq!(driver.panel().distinct_levels(strip), 2);
+        assert_eq!(driver.panel().distinct_levels(above), 16);
+        assert_eq!(driver.panel().distinct_levels(below), 16);
+
+        // The finger lifts. The strip comes back; nothing else is touched.
+        assert!(driver.settle(src, &[]).unwrap().is_some());
+        driver.flush().unwrap();
+        assert_eq!(driver.panel().distinct_levels(strip), 16);
+        assert_eq!(driver.panel().updates.last().unwrap().asked, strip);
+        assert!(driver.panel().faults.is_empty());
+    }
+
+    #[test]
+    fn flush_within_leaves_a_slow_update_live_at_the_deadline() {
+        let (w, h) = (64u32, 16u32);
+        let mut driver = PanelDriver::with_policy(
+            SimulatedPanel::with_config(w, h, exact()),
+            RefreshPolicy::never(),
+        );
+        let rgba = ramp(w, h);
+        let src = Source::panel(&rgba, w, h).unwrap();
+        let top = PanelRect::new(0, 0, w, 8);
+        let bottom = PanelRect::new(0, 8, w, 8);
+
+        // 120ms and 450ms, unrelated regions, both live.
+        driver
+            .present(src, Some(top), UpdateClass::Monochrome)
+            .unwrap();
+        driver
+            .present(src, Some(bottom), UpdateClass::Quality)
+            .unwrap();
+        assert_eq!(driver.live().len(), 2);
+
+        // The deadline is per wait: the first completes inside it and is
+        // retired, the second does not and is still live afterwards.
+        assert_eq!(
+            driver.flush_within(Duration::from_millis(200)).unwrap(),
+            Wait::TimedOut
+        );
+        assert_eq!(driver.live().len(), 1);
+        assert_eq!(driver.live()[0].rect, bottom);
+        assert_eq!(driver.panel().now(), Duration::from_millis(320));
+        assert_eq!(driver.panel().distinct_levels(top), 2);
+
+        driver.flush().unwrap();
+        assert!(driver.live().is_empty());
+        assert_eq!(driver.panel().now(), Duration::from_millis(450));
+        assert_eq!(driver.panel().distinct_levels(bottom), 16);
     }
 }

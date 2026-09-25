@@ -72,14 +72,16 @@
 //!   local and it is not global — see [`Update::dithering_within`].
 //!
 //! Everything above the ioctls is testable with no hardware attached:
-//! [`RecordingPanel`] plus the driver's own tests are the conformance
-//! suite, and they run on a build machine with no panel.
+//! [`RecordingPanel`], [`SimulatedPanel`] and the driver's own tests are
+//! the conformance suite, and they run on a build machine with no panel.
+//! The simulated panel keeps updates in flight on a clock the test owns,
+//! and reports from its own side whether anything wrote under one.
 //!
 //! # Cargo features
 //!
 //! | feature | what it adds |
 //! |---|---|
-//! | `alloc` | [`PanelDriver`] and [`RecordingPanel`] |
+//! | `alloc` | [`PanelDriver`], [`RecordingPanel`] and [`SimulatedPanel`] |
 //! | `std` (default) | `std::io::Error` inside [`Error`], and backends |
 //! | `fbdev` (default) | the Linux framebuffer backend, on Linux |
 //! | `mxcfb` | the i.MX EPDC ioctl vocabulary, [`mxcfb::uapi`] — not yet a backend |
@@ -112,6 +114,8 @@ mod update;
 mod driver;
 #[cfg(feature = "alloc")]
 mod recording;
+#[cfg(feature = "alloc")]
+mod simulated;
 
 // The feature alone is not the gate. `libc` is a Linux-only dependency in
 // the manifest, and this module is nothing but ioctls and `/dev/fb0`, so
@@ -145,3 +149,6 @@ pub use driver::{LiveUpdate, PanelDriver};
 #[cfg(feature = "alloc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
 pub use recording::{Recorded, RecordingPanel};
+#[cfg(feature = "alloc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
+pub use simulated::{Fault, InFlight, SimConfig, SimulatedPanel, Submitted};

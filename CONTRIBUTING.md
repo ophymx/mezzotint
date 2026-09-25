@@ -107,9 +107,23 @@ grows past the point where one sentence covers it, write the NOTICE.
 **Everything above the ioctl boundary is tested without hardware, and that
 is not a nice-to-have.** Refresh behaviour is both easy to get wrong and
 impossible to eyeball: nobody can tell, by looking at an ereader, that a
-drag issued one update per pixel of travel. The recording panel plus the
-driver tests are the conformance suite, and they run on a build machine
-with no panel attached.
+drag issued one update per pixel of travel. The recording panel, the
+simulated panel and the driver tests are the conformance suite, and they
+run on a build machine with no panel attached.
+
+**The simulated panel is the one that keeps time, and the fault log is
+its point.** `SimulatedPanel` stages on `blit`, reduces on `submit`, and
+lands pixels on its glass only when the update completes on a clock the
+test advances — a bounded `wait` spends the timeout, an unbounded one
+spends whatever is left. It records a `Fault` for every write under a
+region the driver asked it to refresh, which is the rule the driver
+exists to hold and which no earlier double could check from the panel's
+side. A shell author drives their own code against it and asserts that
+`faults` is empty. When an EPDC backend lands, the same tests run against
+it with a real clock; the simulation is what the device is diffed
+against, not a substitute for it. It models nothing that is only
+knowable on glass: no ghosting appearance, no temperature, no waveform
+artifacts.
 
 **The ioctl boundary itself gets a thin, obviously-transcribed layer plus
 on-device smoke tools** — `examples/` binaries a person runs while holding
@@ -237,12 +251,14 @@ byte is MSB-first, which nothing reports and every mono fbdev driver
 assumes.
 
 **The asynchronous half of the contract has never run on hardware.** The
-only backend that exists is a framebuffer, whose `submit` is a no-op and
-whose `wait` returns immediately, so nothing has ever genuinely been in
-flight. The vocabulary is earned — it came off a working implementation —
-but `PanelDriver`'s collision handling is proven only against
-`RecordingPanel` and the test doubles beside it. Treat it as tested rather
-than as field-proven, and expect the first EPDC backend to find something.
+only device backend that exists is a framebuffer, whose `submit` is a
+no-op and whose `wait` returns immediately. `SimulatedPanel` is the first
+backend that genuinely keeps an update in flight, and `PanelDriver`'s
+collision handling is now proven against it — the panel reports, from its
+own side, that nothing wrote under a live update — as well as against
+`RecordingPanel` and the doubles beside it. That is still a model of a
+controller and not a controller. Treat it as tested rather than as
+field-proven, and expect the first EPDC backend to find something.
 
 That is not hypothetical: the single-slot version of that same code was
 green for its whole life and was still wrong in two ways, both of which
