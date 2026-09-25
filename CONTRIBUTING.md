@@ -74,8 +74,9 @@ adjacent ground under MIT:
 - [`libremarkable`](https://github.com/canselcik/libremarkable) — an
   mxcfb layer for the reMarkable, including the ioctl structs, the
   waveform constants, and an `mxcfb_update_data` carrying the fields this
-  crate's contract does not yet name (`temperature`, `dither_mode`,
-  `quant_bit`, `update_mode`).
+  crate's contract deliberately does not name (`temp`, `dither_mode`,
+  `quant_bit`, `update_mode` — see *Decisions that are settled* for why
+  each is the backend's to derive).
 - [`kobo-core`](https://github.com/Nayeem170/kobo-core) — a Kobo device
   SDK whose device database identifies twenty models from
   `/sys/devices/soc0/machine` across NXP, sunxi, and MTK parts.
@@ -277,12 +278,51 @@ into it wants a measurement on a real framebuffer rather than a guess.
 Nothing forecloses it: it arrives later as a provided method on `Panel`
 returning `Option<&mut [u8]>`, and adding a provided method breaks nobody.
 
-**`submit` takes an `Update`, not a bare class.** `mxcfb_update_data`
-alone carries a temperature, a partial/full update mode, a hardware dither
-mode and a quantization depth. None belong in 0.1 and all would be
-breaking additions to a published trait method. `Update`'s fields are
-private and grow behind builder methods, which is what lets a backend
-that only reads one keep compiling.
+**`submit` takes an `Update`, not a bare class.** `Update`'s fields are
+private and grow behind builder methods, so a hint that turns out to be
+needed arrives without breaking the one trait method every backend
+implements, and a backend that only reads the class keeps compiling. That
+is the mechanism. What is allowed through it is the next decision.
+
+**A hint enters `Update` only when the consumer knows something the
+backend cannot derive.** The test: does a shell above the seam
+legitimately know this, per update, in terms that mean the same thing on
+every controller? The class, the rect and the diffusion regions pass it.
+The four fields of `mxcfb_update_data` (NXP `include/uapi/linux/mxcfb.h`)
+that looked like gaps were each held to it, and none pass — so none is
+coming, and a backend author should not wait for them:
+
+- `update_mode` (partial or full) *is* the class. `Flash` is a full-mode
+  update of the whole panel; everything else is partial. That the
+  constant sits beside the waveform rather than inside it is an mxcfb
+  spelling, not a second axis a consumer could set independently.
+- `temp` is neither per update nor the shell's. The controller's own
+  sensor (`TEMP_USE_AMBIENT`) is the right answer on a working device,
+  and an explicit temperature is a quirk for one whose sensor is not —
+  a row in the device table, or at most a constructor option on the
+  backend. Nothing above the seam can know a better number.
+- `quant_bit` is the depth of the waveform the class mapped to, which
+  the backend's own waveform table already holds. Asking the consumer
+  would be asking for the answer to a question it cannot see.
+- `dither_mode` follows from the diffusion regions, and this derivation
+  is the one that needs care. Hardware dithering runs over the whole
+  region the controller refreshes and cannot be scoped inside it. So it
+  is usable exactly when the regions the consumer named cover the rect
+  the backend actually submits — which, after alignment widening, may be
+  more than the rect it was asked for. An empty set is quantize-only.
+  Anything in between is software diffusion inside the regions, in
+  `encode`, with the hardware told to leave the result alone. Older
+  kernels spell the same choice as `EPDC_FLAG_USE_DITHERING_Y1`/`Y4`
+  flags, and the derivation is the same. Which kernel the hardware runs
+  when it does run — Floyd–Steinberg, Atkinson, ordered — is a backend
+  choice the consumer never asked to make; if one ever needs to, that is
+  a builder method, not a redesign.
+
+The remaining `flags` fall the same way: `FORCE_MONOCHROME` is
+`Monochrome`, `USE_REGAL` is `Quality` on a model that has it, and
+collision testing and update grouping are the backend's own bookkeeping.
+`ENABLE_INVERSION` is the only one a shell could plausibly want, and it
+is a property of the pixels, which the consumer already owns.
 
 **`wait` takes a deadline.** `Option<Duration>`, returning `Wait` rather
 than treating expiry as an error — a caller polling with a zero timeout is

@@ -77,13 +77,20 @@ impl UpdateClass {
 /// One submission to a panel: the class, plus the hints a backend may use
 /// while reducing for it.
 ///
-/// A struct rather than a bare `class` argument because the fields a
-/// controller wants are not all named yet. `mxcfb_update_data` alone
-/// carries a temperature, a partial/full update mode, a hardware dither
-/// mode and a quantization depth; none of them belong in 0.1, and all of
-/// them would be a breaking change to add to a published trait method.
-/// Fields here are private and grow behind builder methods, so a backend
-/// reading an `Update` keeps compiling when one arrives.
+/// A struct rather than a bare `class` argument so that a hint can be
+/// added without breaking the one trait method every backend implements:
+/// fields here are private and grow behind builder methods, and a backend
+/// that only reads the class keeps compiling when one arrives.
+///
+/// A hint earns a place here only when the consumer knows something the
+/// backend cannot derive from the class, the rect and the regions below.
+/// The fields of `mxcfb_update_data` that look like candidates do not:
+/// partial-or-full is the class, the quantization depth is the waveform's,
+/// the temperature is the controller's own sensor, and the hardware dither
+/// mode follows from the diffusion regions — hardware when they cover the
+/// whole refreshed rect, quantize-only when there are none, software
+/// inside them otherwise. `CONTRIBUTING.md` records each of those under
+/// *Decisions that are settled*, so a backend need not wait for them.
 ///
 /// # Where diffusion is allowed
 ///
