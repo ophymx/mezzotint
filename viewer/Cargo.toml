@@ -1,0 +1,19 @@
+[package]
+name = "mezzotint-viewer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "A desktop window onto mezzotint's simulated e-ink panel"
+
+# Its own crate rather than an example of the library, on purpose. A
+# windowing stack is a few hundred crates across every platform, and the
+# library's dependency graph is one crate, checked against a license gate
+# that scans every platform's dependencies. Keeping the window out here
+# keeps that gate meaning what it says. `path` rather than a version so
+# it always shows the tree it sits in.
+
+[dependencies]
+mezzotint = { path = "..", default-features = false, features = ["alloc"] }
+softbuffer = "0.4"
+winit = "0.30"

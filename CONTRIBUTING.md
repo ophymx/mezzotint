@@ -128,6 +128,15 @@ against, not a substitute for it. It models nothing that is only
 knowable on glass: no ghosting appearance, no temperature, no waveform
 artifacts.
 
+`viewer/` is that panel in a window, with wall time as its clock and a
+stand-in shell driving it. It is a separate crate rather than an example
+because a windowing stack is a few hundred crates across every platform
+and `deny.toml` scans every platform, so it must not join the library's
+graph. Its shell shows the one thing a real one has to get right on a UI
+thread: it never blocks on the panel. Damage over a live region waits for
+the next frame, and a zero-deadline `flush_within` each frame is the poll
+that retires what finished. CI builds and lints it so it cannot rot.
+
 **The ioctl boundary itself gets a thin, obviously-transcribed layer plus
 on-device smoke tools** — `examples/` binaries a person runs while holding
 the device. Code that runs is not the same as code that is right, and for

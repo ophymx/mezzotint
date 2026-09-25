@@ -135,3 +135,17 @@ jobs:
             echo "a truecolor framebuffer was accepted where a refusal was demanded" >&2
             exit 1
           fi
+
+  # The viewer is its own crate, deliberately outside the library's
+  # dependency graph — see viewer/Cargo.toml — so the library's license
+  # gate stays meaningful. It still has to build, or it rots.
+  viewer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --manifest-path viewer/Cargo.toml --check
+      - run: cargo clippy --manifest-path viewer/Cargo.toml -- -D warnings
+      - run: cargo build --manifest-path viewer/Cargo.toml
