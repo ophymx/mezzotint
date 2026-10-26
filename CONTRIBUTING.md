@@ -93,7 +93,14 @@ do adapt, say so at the site and carry the notice.
 
 **The clean base is the kernel UAPI.** `mxcfb.h` and vendor-published
 kernels, transcribed with the header and kernel version cited in a comment
-next to the struct. A transcription that drifts does not fail loudly; it
+next to the struct. A vendor's ioctl header does not always sit under
+`include/uapi` with the syscall note beside it — MediaTek's `hwtcon` one
+is plain GPL-2.0 in `include/linux` — and the rule is the same: take the
+interface (layouts, numbers, the names user space needs), check it
+against the running kernel, write every comment yourself, and cite it.
+An ABI is a fact about the device, and the kernel's own `COPYING` says
+user programs speaking it are not derived works; a header's prose is
+neither of those things. A transcription that drifts does not fail loudly; it
 reads plausible garbage out of the wrong offsets. Guard every transcribed
 struct with `const` assertions on `offset_of!` and `size_of!`, on both
 32-bit and 64-bit arms, because every e-ink device is one or the other.
@@ -144,7 +151,15 @@ graph. CI builds, lints and tests it so it cannot rot.
 **The ioctl boundary itself gets a thin, obviously-transcribed layer plus
 on-device smoke tools** — `examples/` binaries a person runs while holding
 the device. Code that runs is not the same as code that is right, and for
-a waveform the difference is only visible on glass.
+a waveform the difference is only visible on glass. There are two and
+they are backend-agnostic on purpose: `probe` reads a framebuffer and
+writes nothing, and `bringup` identifies it, checks the packing against
+the kernel's own numbers, and with `--drive` puts a test card through
+every class on whichever backend the driver's name selects, timing each
+and then running the shell's own sequence of provisional strips, settle
+and flush. A new backend adds its identification and its waveform switch
+to `bringup` under its feature; it does not get a tool of its own, so
+that the next device is brought up with the same stages as the last.
 
 **A framebuffer's pixel format comes from hardware, so a unit test can only
 assert constants somebody typed.** QEMU supplies real ones: a host kernel,
@@ -214,9 +229,21 @@ data, so adding a model is adding a row. Its IDs and codenames are Kobo's
 KOReader as facts with nothing taken from either. The waveform table is
 what remains, and it is the hardware-gated part.
 
-After i.MX, the same trait covers Allwinner-Kobo (a sunxi shim, a
-different ioctl world), the Kindle mxcfb variants, and MTK. The reMarkable
-2 has no framebuffer at all and is out of scope until somebody owns one.
+The first backend to clear that gate is not i.MX. `src/hwtcon/` drives
+MediaTek's `hwtcon` controller — the MT8113 Kobos and their Tolino twins
+— and was written with a Kobo Clara Colour on the desk: the ioctl header
+came from the device maker's GPL kernel drop, read for facts and
+transcribed with every offset asserted; the numbers, including the one
+the header gets wrong, were read back from the running kernel; and the
+waveform table's timings are measured, not quoted. It sits on `fbdev`,
+because the controller's framebuffer is an ordinary one with ioctls
+beside it, and it is the backend that first put the asynchronous half of
+the contract on hardware. `examples/bringup.rs --drive` is its smoke tool.
+
+After that, the same trait covers i.MX (`mxcfb`, whose vocabulary is
+already transcribed), Allwinner-Kobo (a sunxi shim, a different ioctl
+world) and the Kindle mxcfb variants. The reMarkable 2 has no framebuffer
+at all and is out of scope until somebody owns one.
 
 ## Constraints that outlive any one file
 
@@ -266,15 +293,18 @@ The kernel's `visual` says which bit means white; bit order within the
 byte is MSB-first, which nothing reports and every mono fbdev driver
 assumes.
 
-**The asynchronous half of the contract has never run on hardware.** The
-only device backend that exists is a framebuffer, whose `submit` is a
-no-op and whose `wait` returns immediately. `SimulatedPanel` is the first
-backend that genuinely keeps an update in flight, and `PanelDriver`'s
-collision handling is now proven against it — the panel reports, from its
-own side, that nothing wrote under a live update — as well as against
-`RecordingPanel` and the doubles beside it. That is still a model of a
-controller and not a controller. Treat it as tested rather than as
-field-proven, and expect the first EPDC backend to find something.
+**The asynchronous half of the contract first ran on hardware with
+`hwtcon`.** Before it, the only device backend was a framebuffer, whose
+`submit` is a no-op and whose `wait` returns immediately, and
+`SimulatedPanel` was the only backend that genuinely kept an update in
+flight — `PanelDriver`'s collision handling was proven against it, and
+against `RecordingPanel` and the doubles beside it, but a model of a
+controller is not a controller. `hwtcon`'s `submit` queues to a real
+one, and its `wait` is a kernel call with a five-second bound of its own
+and no shorter one, which is why that backend puts each wait on a thread
+and honours the contract's deadline against a channel. Treat the
+simulation as what the device is diffed against, and expect each new
+EPDC backend to find something the last one did not.
 
 That is not hypothetical: the single-slot version of that same code was
 green for its whole life and was still wrong in two ways, both of which
@@ -336,7 +366,11 @@ coming, and a backend author should not wait for them:
   sensor (`TEMP_USE_AMBIENT`) is the right answer on a working device,
   and an explicit temperature is a quirk for one whose sensor is not —
   a row in the device table, or at most a constructor option on the
-  backend. Nothing above the seam can know a better number.
+  backend. Nothing above the seam can know a better number. (The
+  `hwtcon` driver turned out to be the quirk: it has no working sensor
+  path of its own and expects user space to tell it, so that backend
+  grew a `set_temperature` method rather than a hint on `Update` — the
+  number is still not per update, and still not the consumer's.)
 - `quant_bit` is the depth of the waveform the class mapped to, which
   the backend's own waveform table already holds. Asking the consumer
   would be asking for the answer to a question it cannot see.
@@ -347,7 +381,11 @@ coming, and a backend author should not wait for them:
   the backend actually submits — which, after alignment widening, may be
   more than the rect it was asked for. An empty set is quantize-only.
   Anything in between is software diffusion inside the regions, in
-  `encode`, with the hardware told to leave the result alone. Older
+  `encode`, with the hardware told to leave the result alone — unless
+  the controller is about to run a colour-filter pass over the same
+  pixels, since `encode` writes luminance and would hand it a grey
+  illustration; `hwtcon` gives up the diffusion there rather than the
+  colour, and per-channel diffusion is the named follow-up. Older
   kernels spell the same choice as `EPDC_FLAG_USE_DITHERING_Y1`/`Y4`
   flags, and the derivation is the same. Which kernel the hardware runs
   when it does run — Floyd–Steinberg, Atkinson, ordered — is a backend

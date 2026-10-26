@@ -53,6 +53,12 @@ fbdev = ["std", "dep:libc"]
 # same feature and will pull in `std` and `libc` then; that is additive.
 mxcfb = []
 
+# The MediaTek `hwtcon` e-ink backend: the MT8113 Kobos and their Tolino
+# twins. The first EPDC backend, written against a Kobo Clara Colour. Its
+# framebuffer is an ordinary fbdev with ioctls beside it, so it builds on
+# that backend and inherits its target gate.
+hwtcon = ["fbdev"]
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -64,19 +70,20 @@ rustdoc-args = ["--cfg", "docsrs"]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(docsrs)'] }
 
 # The examples are the on-device half of the test story: a person runs
-# them while holding the hardware. They are all fbdev, so they do not
-# build without it — and without this, `cargo test --no-default-features`
-# tries to and fails.
+# them while holding the hardware. `probe` reads a framebuffer and writes
+# nothing; `bringup` identifies it, checks the packing, and with `--drive`
+# puts a test card through every class on whichever backend the kernel's
+# driver name selects. Both sit on fbdev, so they do not build without it
+# — and without this, `cargo test --no-default-features` tries to and
+# fails. `bringup` grows a backend's identification and its waveform
+# switch under that backend's feature rather than needing a tool of its
+# own.
 [[example]]
 name = "probe"
 required-features = ["fbdev"]
 
 [[example]]
-name = "selftest"
-required-features = ["fbdev"]
-
-[[example]]
-name = "pattern"
+name = "bringup"
 required-features = ["fbdev"]
 
 # Not a gate — a build machine's timings are not a device's — but

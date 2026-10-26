@@ -13,7 +13,7 @@
 # Needs qemu-system-x86_64, busybox, cpio, gzip and a readable host kernel.
 # Nothing here needs root, and it never touches your own framebuffer.
 #
-# This exits non-zero when the guest's self-test fails, when it never
+# This exits non-zero when the guest's bring-up self-test fails, when it never
 # reports at all, or when the boot hangs. That is not incidental: a
 # harness that ends by `exec`-ing qemu reports qemu's exit status, and a
 # result printed to the serial console is something a human reads and CI
@@ -43,11 +43,11 @@ command -v qemu-system-x86_64 >/dev/null || { echo "qemu-system-x86_64 not found
 command -v busybox >/dev/null || { echo "busybox not found" >&2; exit 1; }
 command -v cpio >/dev/null || { echo "cpio not found" >&2; exit 1; }
 
-cargo build --features fbdev --example selftest --example probe
+cargo build --features fbdev --example bringup --example probe
 
 R=$WORK/root
 mkdir -p "$R/bin" "$R/lib/x86_64-linux-gnu" "$R/lib64" "$R/proc" "$R/sys" "$R/dev"
-cp target/debug/examples/selftest target/debug/examples/probe "$R/"
+cp target/debug/examples/bringup target/debug/examples/probe "$R/"
 BUSYBOX=$(command -v busybox)
 cp "$BUSYBOX" "$R/bin/"
 ln -s busybox "$R/bin/sh"
@@ -55,7 +55,7 @@ ln -s busybox "$R/bin/sh"
 # because a statically linked busybox — which is what `busybox-static`
 # installs, and what CI uses — makes ldd exit non-zero after saying so,
 # and that is a normal outcome here rather than a failure.
-for lib in $( (ldd "$BUSYBOX" target/debug/examples/selftest || true) |
+for lib in $( (ldd "$BUSYBOX" target/debug/examples/bringup || true) |
              awk '/=> \//{print $3}' | sort -u); do
     cp "$lib" "$R/lib/x86_64-linux-gnu/"
 done
@@ -75,9 +75,9 @@ if [ -e /dev/fb0 ]; then echo "FB0=present"; else echo "FB0=absent"; fi
 echo "### PROBE"
 /probe /dev/fb0 2>&1
 echo "PROBE_EXIT=$?"
-echo "### SELFTEST"
-/selftest /dev/fb0 2>&1
-echo "SELFTEST_EXIT=$?"
+echo "### BRINGUP"
+/bringup /dev/fb0 2>&1
+echo "BRINGUP_EXIT=$?"
 $B poweroff -f
 INIT
 chmod +x "$R/init"
@@ -116,7 +116,7 @@ reported() {
 }
 FB0=$(reported FB0)
 PROBE=$(reported PROBE_EXIT)
-SELFTEST=$(reported SELFTEST_EXIT)
+BRINGUP=$(reported BRINGUP_EXIT)
 
 if [ -z "$FB0" ]; then
     echo "FAIL: guest never reported whether it had a framebuffer" >&2
@@ -156,12 +156,12 @@ if [ "$EXPECT_REFUSAL" = yes ]; then
     exit 0
 fi
 
-if [ -z "$SELFTEST" ]; then
-    echo "FAIL: guest never reported a self-test result" >&2
+if [ -z "$BRINGUP" ]; then
+    echo "FAIL: guest never reported a bring-up result" >&2
     exit 1
 fi
-if [ "$SELFTEST" != 0 ]; then
-    echo "FAIL: self-test exited $SELFTEST" >&2
+if [ "$BRINGUP" != 0 ]; then
+    echo "FAIL: bring-up self-test exited $BRINGUP" >&2
     exit 1
 fi
 echo "PASS: vga=$MODE"

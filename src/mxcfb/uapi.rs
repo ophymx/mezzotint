@@ -31,57 +31,10 @@
 
 use core::mem::size_of;
 
-// ---------------------------------------------------------------------
-// include/uapi/asm-generic/asm-generic/ioctl.h
-//
-// The encoding every architecture this crate can run on uses: arm, arm64
-// and x86 all take the generic one. Two bits of direction, fourteen of
-// payload size, eight of type, eight of number.
-// ---------------------------------------------------------------------
-
-const IOC_NRBITS: u32 = 8;
-const IOC_TYPEBITS: u32 = 8;
-const IOC_SIZEBITS: u32 = 14;
-
-const IOC_NRSHIFT: u32 = 0;
-const IOC_TYPESHIFT: u32 = IOC_NRSHIFT + IOC_NRBITS;
-const IOC_SIZESHIFT: u32 = IOC_TYPESHIFT + IOC_TYPEBITS;
-const IOC_DIRSHIFT: u32 = IOC_SIZESHIFT + IOC_SIZEBITS;
-
-const IOC_NONE: u32 = 0;
-const IOC_WRITE: u32 = 1;
-const IOC_READ: u32 = 2;
-
-const fn ioc(dir: u32, ty: u8, nr: u8, size: usize) -> u32 {
-    // Fourteen bits of size is what the kernel has; a payload that does
-    // not fit is not an ioctl, and a `const fn` that panics is a build
-    // failure, which is the right time to find out.
-    assert!(size < (1 << IOC_SIZEBITS));
-    (dir << IOC_DIRSHIFT)
-        | ((size as u32) << IOC_SIZESHIFT)
-        | ((ty as u32) << IOC_TYPESHIFT)
-        | ((nr as u32) << IOC_NRSHIFT)
-}
-
-/// `_IO(type, nr)`: an ioctl with no payload.
-pub const fn io(ty: u8, nr: u8) -> u32 {
-    ioc(IOC_NONE, ty, nr, 0)
-}
-
-/// `_IOR(type, nr, T)`: the kernel writes a `T` back to user space.
-pub const fn ior<T>(ty: u8, nr: u8) -> u32 {
-    ioc(IOC_READ, ty, nr, size_of::<T>())
-}
-
-/// `_IOW(type, nr, T)`: user space hands the kernel a `T`.
-pub const fn iow<T>(ty: u8, nr: u8) -> u32 {
-    ioc(IOC_WRITE, ty, nr, size_of::<T>())
-}
-
-/// `_IOWR(type, nr, T)`: both directions through one `T`.
-pub const fn iowr<T>(ty: u8, nr: u8) -> u32 {
-    ioc(IOC_READ | IOC_WRITE, ty, nr, size_of::<T>())
-}
+// The `_IO*` encoding lives in `crate::ioctl` so that every transcribed
+// header derives its numbers the same way; it is re-exported here because
+// this module published it first.
+pub use crate::ioctl::{io, ior, iow, iowr};
 
 // ---------------------------------------------------------------------
 // include/uapi/linux/mxcfb.h
@@ -332,16 +285,6 @@ mod layout_matches_the_kernel {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_encoding_reproduces_the_kernels_numbers() {
-        // Worked by hand from asm-generic/ioctl.h: direction in the top
-        // two bits, size in the next fourteen, 'F' is 0x46.
-        assert_eq!(io(b'F', 0x35), 0x0000_4635);
-        assert_eq!(iow::<u32>(b'F', 0x2D), 0x4004_462D);
-        assert_eq!(ior::<i32>(b'F', 0x31), 0x8004_4631);
-        assert_eq!(iowr::<[u8; 8]>(b'F', 0x2F), 0xC008_462F);
-    }
 
     #[test]
     fn every_epdc_ioctl_has_the_number_its_payload_implies() {
