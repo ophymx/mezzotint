@@ -90,8 +90,13 @@ STATUS=0
 # `timeout` rather than trusting the guest to power itself off: a kernel
 # that panics before init, or an init that wedges, would otherwise hang
 # the whole job rather than failing it.
+# `-cpu max` because the default model, `qemu64`, predates SSE4 and AVX,
+# and a distribution that builds its userland for a newer x86-64 level
+# (Ubuntu 26.04's busybox-static does) dies of SIGILL in init before the
+# guest can say anything. `max` is every feature the emulator implements,
+# so the guest sees at least what the host's packages were built for.
 timeout --foreground "$TIMEOUT" qemu-system-x86_64 \
-    -kernel "$KERNEL" -initrd "$WORK/initramfs.gz" \
+    -cpu max -kernel "$KERNEL" -initrd "$WORK/initramfs.gz" \
     -append "console=ttyS0 vga=$MODE nomodeset panic=1" \
     -vga std -m 512 -nographic -no-reboot > "$LOG" 2>&1 || STATUS=$?
 sed 's/\r$//' "$LOG"
