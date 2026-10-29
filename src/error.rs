@@ -4,6 +4,16 @@ use core::fmt;
 
 use crate::{PanelRect, UpdateToken};
 
+/// A fixed-width, NUL-padded name the kernel hands back — a driver id, a
+/// waveform file — as text, up to the first NUL.
+///
+/// One place for this, because the three structs that carry such names
+/// would otherwise each spell the fallback differently.
+pub(crate) fn nul_terminated(bytes: &[u8]) -> &str {
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    core::str::from_utf8(&bytes[..end]).unwrap_or("<not utf-8>")
+}
+
 /// The result of anything that talks to a panel.
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -71,6 +81,20 @@ pub enum Error {
         token: UpdateToken,
     },
 
+    /// The framebuffer belongs to a different driver than the backend
+    /// speaks.
+    ///
+    /// Raised before anything is mapped or sent. The e-ink drivers share
+    /// an ioctl letter and most of their numbers, so an update handed to
+    /// the wrong one is not refused but misread; checking the name the
+    /// kernel reports is what stands between the two.
+    UnexpectedDriver {
+        /// The driver the backend is for.
+        expected: &'static str,
+        /// `fb_fix_screeninfo.id` as the kernel reported it, NUL-padded.
+        found: [u8; 16],
+    },
+
     /// The operating system refused something on the way to the panel.
     ///
     /// `doing` names the call, because `ENOTTY` from an ioctl and
@@ -102,6 +126,13 @@ impl fmt::Display for Error {
             ),
             Error::UnsupportedGeometry { width, height } => {
                 write!(f, "device reports a {width}x{height} screen")
+            }
+            Error::UnexpectedDriver { expected, found } => {
+                write!(
+                    f,
+                    "framebuffer driver is {:?}, not {expected}",
+                    nul_terminated(found)
+                )
             }
             Error::WaitStalled { token } => write!(
                 f,

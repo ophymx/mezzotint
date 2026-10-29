@@ -22,7 +22,8 @@ greyscale tone — which is this crate's whole job.
 - **Backends**: an in-memory recording panel and a simulated EPDC that
   keeps updates in flight on a clock the test owns (both for CI), the
   generic Linux framebuffer (fbdev), and — the reason the crate exists —
-  EPDC devices, starting with i.MX/mxcfb e-readers.
+  EPDC devices: MediaTek `hwtcon` e-readers today, written against a Kobo
+  Clara Colour, with i.MX/mxcfb next.
 - The **encode path**: RGBA in; luminance, quantization and error
   diffusion in `mezzotint::encode`, packing inside each backend, per
   update where the hardware allows it.
@@ -120,6 +121,7 @@ the same either way, and neither has to allocate for the other's habits.
 | `std` (default) | `std::io::Error` inside the error type, and backends |
 | `fbdev` (default) | the Linux framebuffer backend |
 | `mxcfb` | the i.MX EPDC ioctl vocabulary, transcribed and layout-checked; not yet a backend |
+| `hwtcon` | the MediaTek e-ink backend (MT8113 Kobos and Tolino twins), on Linux; sits on `fbdev` |
 
 The vocabulary — update classes, rects, the `Panel` trait, the refresh
 policy, the encoder, the device table — is `core`-only and allocates
@@ -153,12 +155,16 @@ change after publication — the `no_std` split, the blit buffer
 convention, the shape of `submit`, the deadline on `wait` — are made and
 written down in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-What is *not* here is the reason the crate exists: an EPDC backend.
-`mxcfb` lands when there is hardware in hand to write it against, as
-0.2's headline. Waveform behaviour is only visible on glass, and a
-version of it written from headers alone would run without being right.
-What headers *can* give — the i.MX ioctl structs and numbers, with every
-offset asserted — is already in, behind the `mxcfb` feature, so the
+The first EPDC backend is in: `hwtcon`, MediaTek's e-ink controller on
+the MT8113 Kobos, written against a Kobo Clara Colour with every struct
+layout, ioctl number and timing read back from the device. It is also
+the first backend whose `submit` genuinely queues, so the driver's
+collision rules now run against a controller rather than a model of one.
+`mxcfb` is next, and the same rule applies: it lands when there is i.MX
+hardware in hand. Waveform behaviour is only visible on glass, and a
+version written from headers alone would run without being right. What
+headers *can* give — the i.MX ioctl structs and numbers, with every
+offset asserted — is already in, behind the `mxcfb` feature, so that
 backend starts from a checked vocabulary rather than from a header.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the provenance and licensing

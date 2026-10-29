@@ -85,15 +85,16 @@
 //! | `std` (default) | `std::io::Error` inside [`Error`], and backends |
 //! | `fbdev` (default) | the Linux framebuffer backend, on Linux |
 //! | `mxcfb` | the i.MX EPDC ioctl vocabulary, [`mxcfb::uapi`] — not yet a backend |
+//! | `hwtcon` | the MediaTek e-ink backend, [`hwtcon::HwtconPanel`], on Linux — the first EPDC backend, written against a Kobo Clara Colour |
 //!
 //! The vocabulary — [`UpdateClass`], [`Update`], [`PanelRect`],
 //! [`PanelInfo`], [`Panel`], [`RefreshPolicy`], [`encode`], and the
 //! [`devices`] table — needs neither.
 //! Turn everything off and it builds for a microcontroller.
 //!
-//! `fbdev` is additionally gated on `target_os = "linux"`, so leaving it
-//! enabled costs nothing on a platform that has no framebuffer: the module
-//! is simply absent rather than a build failure.
+//! `fbdev` and `hwtcon` are additionally gated on `target_os = "linux"`,
+//! so leaving them enabled costs nothing on a platform that has no
+//! framebuffer: the module is simply absent rather than a build failure.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -106,6 +107,8 @@ extern crate alloc;
 pub mod devices;
 pub mod encode;
 mod error;
+#[cfg(any(feature = "mxcfb", all(feature = "hwtcon", target_os = "linux")))]
+mod ioctl;
 mod panel;
 mod policy;
 mod rect;
@@ -137,6 +140,13 @@ pub mod fbdev;
 #[cfg(feature = "mxcfb")]
 #[cfg_attr(docsrs, doc(cfg(feature = "mxcfb")))]
 pub mod mxcfb;
+
+// The first EPDC backend. It sits on `fbdev` — the controller's
+// framebuffer is an ordinary one with ioctls beside it — so it is gated
+// the same way, and vanishes off Linux for the same reason.
+#[cfg(all(feature = "hwtcon", target_os = "linux"))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "hwtcon", target_os = "linux"))))]
+pub mod hwtcon;
 
 pub use error::{Error, Result};
 pub use panel::{Panel, PanelInfo, PixelFormat, UpdateToken};

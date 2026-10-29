@@ -70,7 +70,7 @@
 //! That is how the palette rejection and the RGB565 packing were checked
 //! against a kernel rather than against an assumption.
 
-mod format;
+pub(crate) mod format;
 
 use std::fs::{File, OpenOptions};
 use std::os::unix::io::AsRawFd;
@@ -229,7 +229,9 @@ fn errno(doing: &'static str) -> Error {
 #[derive(Debug)]
 pub struct FbdevPanel {
     // Held open for the lifetime of the mapping.
-    _file: File,
+    file: File,
+    /// `fb_fix_screeninfo.id`: what the driver calls itself, NUL-padded.
+    driver: [u8; 16],
     map: *mut u8,
     map_len: usize,
     layout: Layout,
@@ -398,7 +400,8 @@ impl FbdevPanel {
         }
 
         Ok(FbdevPanel {
-            _file: file,
+            file,
+            driver: fix.id,
             map: map.cast::<u8>(),
             map_len,
             layout: Layout {
@@ -522,7 +525,34 @@ impl FbdevPanel {
         Some(format::read_native(bytes))
     }
 
-    fn mapping(&mut self) -> &mut [u8] {
+    /// The driver's name from `fb_fix_screeninfo.id`, as text.
+    ///
+    /// What the kernel calls the thing behind `/dev/fb0` — `hwtcon`,
+    /// `mxc_epdc_fb`, `vesafb` — which is how a bring-up tool decides
+    /// which backend to try, and the first fact to print on a device
+    /// nobody has seen.
+    pub fn driver_id(&self) -> &str {
+        crate::error::nul_terminated(&self.driver)
+    }
+
+    /// The driver's name as the kernel spelled it.
+    #[cfg_attr(not(feature = "hwtcon"), allow(dead_code))]
+    pub(crate) fn driver_id_bytes(&self) -> [u8; 16] {
+        self.driver
+    }
+
+    /// The descriptor, for a backend that layers ioctls over this one.
+    #[cfg_attr(not(feature = "hwtcon"), allow(dead_code))]
+    pub(crate) fn raw_fd(&self) -> std::os::unix::io::RawFd {
+        self.file.as_raw_fd()
+    }
+
+    #[cfg_attr(not(feature = "hwtcon"), allow(dead_code))]
+    pub(crate) fn layout(&self) -> Layout {
+        self.layout
+    }
+
+    pub(crate) fn mapping(&mut self) -> &mut [u8] {
         // Safety: `map` came from a successful mmap of `map_len` bytes and
         // is unmapped only in `Drop`, so it is valid for the whole life of
         // this borrow, and `&mut self` makes the slice exclusive.

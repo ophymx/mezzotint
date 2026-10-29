@@ -79,7 +79,9 @@ pub enum Display {
     /// Allwinner's `disp` driver. Not mxcfb at all; a different ioctl
     /// world with its own update and wait.
     SunxiDisp,
-    /// MediaTek's `hwtcon` driver. A third world.
+    /// MediaTek's `hwtcon` driver: `mxcfb`'s letter and most of its
+    /// numbers around a smaller update struct. The `hwtcon` feature's
+    /// backend speaks it.
     MtkHwtcon,
 }
 
