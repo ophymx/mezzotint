@@ -1,6 +1,6 @@
 [package]
 name = "mezzotint"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 # 1.88 is where `slice::as_chunks` stabilized. Measured against real 1.87 and
 # 1.88 toolchains rather than assumed, and the measurement is more specific
